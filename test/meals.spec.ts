@@ -12,7 +12,6 @@ describe('Diet routes', () => {
     afterAll(async () => {
         await app.close()
     })
-
     
     beforeEach(() => {
         execSync('npx knex -- migrate:rollback --all')

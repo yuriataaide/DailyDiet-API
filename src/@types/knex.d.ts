@@ -11,4 +11,8 @@ declare module 'knex/types/tables' {
             session_id?: string
         }
     }
+
+    export interface Params {
+        id: string
+    }
 }

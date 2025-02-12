@@ -1,12 +1,14 @@
-import { FastifyInstance } from "fastify"
+import { FastifyInstance, FastifyRequest } from "fastify"
 import { knex } from "../database"
 import { z } from 'zod'
 import crypto, { randomUUID } from 'node:crypto'
 import { checkSessionIdExist } from "../middlewares/check-session-id-exist"
+import { Params } from "knex/types/tables"
 
 
 
-export async function transactionsRoutes(app: FastifyInstance) {
+
+export async function mealsTransactions(app: FastifyInstance) {
     
     app.addHook('preHandler', async (request, reply) => {
         console.log(`[${request.method}] ${request.url}`)
@@ -68,7 +70,7 @@ export async function transactionsRoutes(app: FastifyInstance) {
         return { summaryMealsQuantity }
     })
 
-    // Summary of meals quantity on diet
+    // Summary of the number of meals in the diet
     app.get('/summaryondiet', 
         {
             preHandler: [checkSessionIdExist]
@@ -85,7 +87,7 @@ export async function transactionsRoutes(app: FastifyInstance) {
             return { summaryMealsQuantityOnDiet }
         })
 
-    // Summary of meals quantity off diet
+    // Summary of the number of meals outside the diet
     app.get('/summaryoffdiet', 
         {
             preHandler: [checkSessionIdExist]
@@ -171,7 +173,7 @@ export async function transactionsRoutes(app: FastifyInstance) {
             })
         }
 
-        await knex('transactions')
+        await knex('dailydiet')
             .insert({
                 id: randomUUID(),
                 name,
@@ -181,5 +183,17 @@ export async function transactionsRoutes(app: FastifyInstance) {
         })
     
         return reply.status(201).send()
+    })
+
+    app.delete('/:id', async (request: FastifyRequest<{Params: Params}>, reply) => {
+        const { id } = request.params
+
+        await knex('dailydiet')
+            .delete()
+            .where({id})
+
+        return reply.status(201).send({
+            message: `Meal deleted succesfully`
+        })
     })
 }
