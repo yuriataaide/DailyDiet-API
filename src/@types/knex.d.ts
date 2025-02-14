@@ -6,13 +6,10 @@ declare module 'knex/types/tables' {
             id: string
             name: string
             description: string
-            type: string
+            isOnDiet: string
             created_at: string
             session_id?: string
         }
     }
 
-    export interface Params {
-        id: string
-    }
 }
