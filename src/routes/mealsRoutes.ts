@@ -1,196 +1,165 @@
-import { FastifyInstance, FastifyRequest } from "fastify"
-import { knex } from "../database"
+import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import crypto, { randomUUID } from 'node:crypto'
-import { checkSessionIdExist } from "../middlewares/check-session-id-exist"
+import { checkSessionIdExist } from '../middlewares/check-session-id-exist'
+import { randomUUID } from 'node:crypto'
+import { knex } from '../database'
 
 export async function mealsRoutes(app: FastifyInstance) {
-    
-    app.addHook('preHandler', async (request, reply) => {
-        console.log(`[${request.method}] ${request.url}`)
-    })
-
-
-    // Create meal
-    app.post('/', 
-        {
-            preHandler: [checkSessionIdExist]
-        }, 
-        async (request, reply) => {
-
-        const createMealBodySchema = z.object({
-            name: z.string(),
-            description: z.string(),
-            isOnDiet: z.boolean(),
-            date: z.coerce.date()
-        })
-
-        const { name, description, isOnDiet, date } = createMealBodySchema.parse(
-            request.body
-        )
-
-        await knex('meals')
-            .insert({
-                id: randomUUID(),
-                name,
-                description, 
-                is_on_diet: isOnDiet,
-                date: date.getTime(),
-                user_id: request.user?.id
-                
-        })
-    
-        return reply.status(201).send()
-    })
-
-    // List meals
-    app.get('/', 
-    {
-        preHandler: [checkSessionIdExist]
-    }, 
+  app.post(
+    '/',
+    { preHandler: [checkSessionIdExist] },
     async (request, reply) => {
-        const { sessionId } = request.cookies
+      const createMealBodySchema = z.object({
+        name: z.string(),
+        description: z.string(),
+        isOnDiet: z.boolean(),
+        date: z.coerce.date(),
+      })
 
-        const meals = await knex('meals')
-            .where({
-                user_id: request.user?.id
-            })
-            .orderBy('date', 'desc')
+      const { name, description, isOnDiet, date } = createMealBodySchema.parse(
+        request.body,
+      )
 
-        return reply.send({ meals })
-    })
+      await knex('meals').insert({
+        id: randomUUID(),
+        name,
+        description,
+        is_on_diet: isOnDiet,
+        date: date.getTime(),
+        user_id: request.user?.id,
+      })
 
-    // Metrics
-    app.get('/metrics', 
-    {
-        preHandler: [checkSessionIdExist]
-    }, 
+      return reply.status(201).send()
+    },
+  )
+
+  app.get(
+    '/',
+    { preHandler: [checkSessionIdExist] },
     async (request, reply) => {
-        const totalMealsOndiet = await knex('meals')
-            .where({user_id: request.user?.id, is_on_diet: true})
-            .count('id', {as: 'total'})
-            .first()
+      const meals = await knex('meals')
+        .where({ user_id: request.user?.id })
+        .orderBy('date', 'desc')
 
-        const totalMealsOffDiet = await knex('meals')
-            .where({user_id: request.user?.id, is_on_diet: false})
-            .count('id', {as: 'total'})
-            .first()
+      return reply.send({ meals })
+    },
+  )
 
-        const totalMeals = await knex('meals')
-            .where({user_id: request.user?.id})
-            .orderBy('date', 'desc')
+  app.get(
+    '/:mealId',
+    { preHandler: [checkSessionIdExist] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ mealId: z.string().uuid() })
 
-        const { bestOnDietSequence } = totalMeals.reduce(
-            (acc, meal) => {
-                if(meal.is_on_diet) {
-                    acc.currentSequence += 1
-                } else {
-                    acc.currentSequence = 0
-                }
+      const { mealId } = paramsSchema.parse(request.params)
 
-                if(acc.currentSequence > acc.bestOnDietSequence) {
-                    acc.bestOnDietSequence = acc.currentSequence
-                }
+      const meal = await knex('meals').where({ id: mealId }).first()
 
-                return (acc)
-            },
+      if (!meal) {
+        return reply.status(404).send({ error: 'Meal not found' })
+      }
 
-            { bestOnDietSequence: 0, currentSequence: 0 },
-        )
+      return reply.send({ meal })
+    },
+  )
 
-        return reply.send({
-            totalMeals: totalMeals.length,
-            totalMealsOndiet: totalMealsOndiet?.total,
-            totalMealsOffDiet: totalMealsOffDiet?.total,
-            bestOnDietSequence,
-        })
-    
-    })
+  app.put(
+    '/:mealId',
+    { preHandler: [checkSessionIdExist] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ mealId: z.string().uuid() })
 
+      const { mealId } = paramsSchema.parse(request.params)
 
-    // Update Meal
-    app.put('/mealId', 
-        {
-            preHandler: [checkSessionIdExist]
-        }, 
-        async (request, reply) => {
-        const paramsSchema = z.object({
-            mealId: z.string().uuid()
-        })
+      const updateMealBodySchema = z.object({
+        name: z.string(),
+        description: z.string(),
+        isOnDiet: z.boolean(),
+        date: z.coerce.date(),
+      })
 
-        const { mealId } = paramsSchema.parse(request.params)
+      const { name, description, isOnDiet, date } = updateMealBodySchema.parse(
+        request.body,
+      )
 
-        const updateMealBodySchema = z.object({
-            name: z.string(),
-            description: z.string(),
-            isOnDiet: z.boolean(),
-            date: z.coerce.date(),
-        })
+      const meal = await knex('meals').where({ id: mealId }).first()
 
-        const { name, description, isOnDiet, date } = updateMealBodySchema.parse(
-            request.body
-        )
+      if (!meal) {
+        return reply.status(404).send({ error: 'Meal not found' })
+      }
 
-        console.log(request.body)
+      await knex('meals').where({ id: mealId }).update({
+        name,
+        description,
+        is_on_diet: isOnDiet,
+        date: date.getTime(),
+      })
 
-        if( !name || !description || !isOnDiet || !date) {
-            return reply.status(400).send({
-                error: `ID, name, description, isOnDiet or date are required.`
-            })
-        }
+      return reply.status(204).send()
+    },
+  )
 
-        const meal = await knex ('meals')
-            .where({id: mealId})
-            .first()
+  app.delete(
+    '/:mealId',
+    { preHandler: [checkSessionIdExist] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ mealId: z.string().uuid() })
 
-        if(!meal) {
-            return reply.status(400).send({
-                error: `Meal not found.`
-            })
-        }
+      const { mealId } = paramsSchema.parse(request.params)
 
-        await knex('meals')
-            .update({
-                name,
-                description,
-                is_on_diet: isOnDiet,
-                date: date.getTime()
-            })
-            .where({id: mealId})
+      const meal = await knex('meals').where({ id: mealId }).first()
 
-            return reply.status(204).send({
-                message: 'Meal updated successfully.'
-            })
+      if (!meal) {
+        return reply.status(404).send({ error: 'Meal not found' })
+      }
 
-        
-    })
+      await knex('meals').where({ id: mealId }).delete()
 
-    // Delete Meal
-    app.delete('/:mealId', 
-        {
-            preHandler: [checkSessionIdExist]
-        }, 
-        async (request, reply) => {
-        const paramsSchema = z.object({
-            mealId: z.string().uuid(),
-        })
+      return reply.status(204).send()
+    },
+  )
 
-        console.log(request.params)
+  app.get(
+    '/metrics',
+    { preHandler: [checkSessionIdExist] },
+    async (request, reply) => {
+      const totalMealsOnDiet = await knex('meals')
+        .where({ user_id: request.user?.id, is_on_diet: true })
+        .count('id', { as: 'total' })
+        .first()
 
-        const { mealId } = paramsSchema.parse(request.params)
+      const totalMealsOffDiet = await knex('meals')
+        .where({ user_id: request.user?.id, is_on_diet: false })
+        .count('id', { as: 'total' })
+        .first()
 
-        const result = await knex('dailydiet')
-            .delete()
-            .where({id: mealId})
+      const totalMeals = await knex('meals')
+        .where({ user_id: request.user?.id })
+        .orderBy('date', 'desc')
 
-        if(result === 0) {
-            return reply.status(400).send({
-                message: `Meal not found.`
-            })
-        }
-        
-        return reply.status(201).send({
-            message: `Meal deleted succesfully`
-        })
-    })
+      const { bestOnDietSequence } = totalMeals.reduce(
+        (acc, meal) => {
+          if (meal.is_on_diet) {
+            acc.currentSequence += 1
+          } else {
+            acc.currentSequence = 0
+          }
+
+          if (acc.currentSequence > acc.bestOnDietSequence) {
+            acc.bestOnDietSequence = acc.currentSequence
+          }
+
+          return acc
+        },
+        { bestOnDietSequence: 0, currentSequence: 0 },
+      )
+
+      return reply.send({
+        totalMeals: totalMeals.length,
+        totalMealsOnDiet: totalMealsOnDiet?.total,
+        totalMealsOffDiet: totalMealsOffDiet?.total,
+        bestOnDietSequence,
+      })
+    },
+  )
 }
